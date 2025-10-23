@@ -1,19 +1,25 @@
-import { RecordsDiff, TLRecord } from "@tldraw/tldraw"
+import { RecordsDiff, TLRecord } from "tldraw"
 import _ from "lodash"
 
 export function applyTLStoreChangesToAutomerge(
   doc: any,
   changes: RecordsDiff<TLRecord>
 ) {
-  Object.values(changes.added).forEach((record) => {
+  const addedRecords = Object.values(changes.added) as TLRecord[]
+  addedRecords.forEach((record) => {
     doc.store[record.id] = record
   })
 
-  Object.values(changes.updated).forEach(([_, record]) => {
+  const updatedRecords = Object.values(changes.updated) as Array<[
+    TLRecord,
+    TLRecord,
+  ]>
+  updatedRecords.forEach(([, record]) => {
     deepCompareAndUpdate(doc.store[record.id], record)
   })
 
-  Object.values(changes.removed).forEach((record) => {
+  const removedRecords = Object.values(changes.removed) as TLRecord[]
+  removedRecords.forEach((record) => {
     delete doc.store[record.id]
   })
 }

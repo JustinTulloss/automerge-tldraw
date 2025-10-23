@@ -8,17 +8,19 @@
   "author": "Peter van Hardenberg (pvh@pvh.ca)",
   "license": "MIT",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node --experimental-specifier-resolution=node --loader ./tests/ts-loader.mjs tests/storeSnapshot.test.ts"
   },
   "peerDependencies": {
-    "@automerge/automerge-repo": "^1.1.0",
-    "@automerge/automerge-repo-react-hooks": "^1.1.0",
-    "@tldraw/tldraw": "2.0.0-beta.2"
+    "@automerge/automerge-repo": "^2.4.0",
+    "@automerge/automerge-repo-react-hooks": "^2.4.0",
+    "tldraw": "^4.1.1"
   },
   "devDependencies": {
-    "@automerge/automerge-repo": "^1.1.0",
-    "@automerge/automerge-repo-react-hooks": "^1.1.0",
-    "@tldraw/tldraw": "2.0.0-beta.2",
+    "@automerge/automerge-repo": "^2.4.0",
+    "@automerge/automerge-repo-react-hooks": "^2.4.0",
+    "@types/node": "^20.11.17",
+    "tldraw": "^4.1.1",
     "@types/lodash": "^4.14.202",
     "@types/react": "^18.2.48",
     "typescript": "^5.3.3"

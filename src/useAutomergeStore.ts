@@ -1,10 +1,6 @@
 import {
-  TLAnyShapeUtilConstructor,
-  TLRecord,
-  TLStoreWithStatus,
   createTLStore,
   defaultShapeUtils,
-  HistoryEntry,
   getUserPreferences,
   setUserPreferences,
   defaultUserPreferences,
@@ -12,9 +8,14 @@ import {
   InstancePresenceRecordType,
   computed,
   react,
+} from "tldraw"
+import type {
+  TLAnyShapeUtilConstructor,
+  TLRecord,
+  TLStore,
   TLStoreSnapshot,
-  sortById,
-} from "@tldraw/tldraw"
+  TLStoreWithStatus,
+} from "tldraw"
 import { useEffect, useState } from "react"
 import { DocHandle, DocHandleChangePayload } from "@automerge/automerge-repo"
 import {
@@ -24,6 +25,19 @@ import {
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js"
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js"
+function cloneSnapshot(snapshot: TLStoreSnapshot): TLStoreSnapshot {
+  return JSON.parse(JSON.stringify(snapshot))
+}
+
+type StoreHistoryEntry = Parameters<TLStore["listen"]>[0] extends (entry: infer Entry) => any
+  ? Entry
+  : {
+      changes: {
+        added: Record<string, TLRecord>
+        updated: Record<string, [TLRecord, TLRecord]>
+        removed: Record<string, TLRecord>
+      }
+    }
 
 export function useAutomergeStore({
   handle,
@@ -37,6 +51,11 @@ export function useAutomergeStore({
     const store = createTLStore({
       shapeUtils: [...defaultShapeUtils, ...shapeUtils],
     })
+    const ensureStoreIsUsable = (store as {
+      ensureStoreIsUsable?: () => void
+    }).ensureStoreIsUsable
+
+    ensureStoreIsUsable?.call(store)
     return store
   })
 
@@ -53,14 +72,15 @@ export function useAutomergeStore({
     let preventPatchApplications = false
 
     /* TLDraw to Automerge */
-    function syncStoreChangesToAutomergeDoc({
-      changes,
-    }: HistoryEntry<TLRecord>) {
+    function syncStoreChangesToAutomergeDoc({ changes }: StoreHistoryEntry) {
       preventPatchApplications = true
-      handle.change((doc) => {
-        applyTLStoreChangesToAutomerge(doc, changes)
-      })
-      preventPatchApplications = false
+      try {
+        handle.change((doc: TLStoreSnapshot) => {
+          applyTLStoreChangesToAutomerge(doc, changes)
+        })
+      } finally {
+        preventPatchApplications = false
+      }
     }
 
     unsubs.push(
@@ -73,7 +93,7 @@ export function useAutomergeStore({
     /* Automerge to TLDraw */
     const syncAutomergeDocChangesToStore = ({
       patches,
-    }: DocHandleChangePayload<any>) => {
+    }: DocHandleChangePayload<TLStoreSnapshot>) => {
       if (preventPatchApplications) return
 
       applyAutomergePatchesToTLStore(patches, store)
@@ -89,11 +109,10 @@ export function useAutomergeStore({
       if (!doc) throw new Error("Document not found")
       if (!doc.store) throw new Error("Document store not initialized")
 
+      const snapshot = cloneSnapshot(doc)
+
       store.mergeRemoteChanges(() => {
-        store.loadSnapshot({
-          store: JSON.parse(JSON.stringify(doc.store)),
-          schema: doc.schema,
-        })
+        store.loadSnapshot(snapshot)
       })
 
       setStoreWithStatus({
@@ -134,14 +153,22 @@ export function useAutomergePresence({ handle, store, userMetadata }:
   useEffect(() => {
     if (!innerStore) return 
     
-    const toPut: TLRecord[] = 
-      Object.values(peerStates)
-      .filter((record) => record && Object.keys(record).length !== 0)
+    const remotePresence = Object.values(peerStates) as Array<
+      TLRecord | undefined
+    >
+    const toPut: TLRecord[] = remotePresence
+      .filter((record): record is TLRecord => Boolean(record))
+      .filter((record) => Object.keys(record).length !== 0)
 
     // put / remove the records in the store
-    const toRemove = innerStore.query.records('instance_presence').get().sort(sortById)
+    const existingPresence = innerStore
+      .query.records("instance_presence")
+      .get()
+      .slice() as TLRecord[]
+    const toRemove = existingPresence
+      .sort((a, b) => a.id.localeCompare(b.id))
       .map((record) => record.id)
-      .filter((id) => !toPut.find((record) => record.id === id))
+      .filter((id) => !toPut.some((record) => record.id === id))
 
     if (toRemove.length) innerStore.remove(toRemove)
     if (toPut.length) innerStore.put(toPut)

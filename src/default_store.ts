@@ -1,19 +1,21 @@
-import { TLStoreSnapshot, createTLStore } from "tldraw"
+import { TLStoreSnapshot, TLStore, createTLStore } from "tldraw"
 
 let cachedDefaultSnapshot: TLStoreSnapshot | null = null
 
-function cloneSnapshot(snapshot: TLStoreSnapshot): TLStoreSnapshot {
-  return JSON.parse(JSON.stringify(snapshot))
+const cloneSnapshot = (snapshot: TLStoreSnapshot): TLStoreSnapshot =>
+  typeof structuredClone === "function"
+    ? structuredClone(snapshot)
+    : JSON.parse(JSON.stringify(snapshot))
+
+const ensureStoreIsUsableIfAvailable = (store: TLStore): void => {
+  const maybeEnsure = (store as TLStore & { ensureStoreIsUsable?: () => void }).ensureStoreIsUsable
+  maybeEnsure?.call(store)
 }
 
 export function getDefaultStoreSnapshot(): TLStoreSnapshot {
   if (!cachedDefaultSnapshot) {
     const store = createTLStore({})
-    const ensureStoreIsUsable = (store as {
-      ensureStoreIsUsable?: () => void
-    }).ensureStoreIsUsable
-
-    ensureStoreIsUsable?.call(store)
+    ensureStoreIsUsableIfAvailable(store)
     const snapshot = store.getSnapshot()
     cachedDefaultSnapshot = cloneSnapshot(snapshot)
   }

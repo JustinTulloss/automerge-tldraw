@@ -1,12 +1,17 @@
 import { createTLStore } from "tldraw"
-import type { TLRecord, TLStore, TLStoreSnapshot } from "tldraw"
+import type { RecordsDiff, TLRecord, TLStoreSnapshot } from "tldraw"
 
 import { getDefaultStoreSnapshot } from "../src/default_store"
 import { applyTLStoreChangesToAutomerge } from "../src/TLStoreToAutomerge"
 
-function cloneSnapshot(snapshot: TLStoreSnapshot): TLStoreSnapshot {
-  return JSON.parse(JSON.stringify(snapshot))
-}
+const cloneSnapshot = (snapshot: TLStoreSnapshot): TLStoreSnapshot =>
+  typeof structuredClone === "function"
+    ? structuredClone(snapshot)
+    : JSON.parse(JSON.stringify(snapshot))
+
+const PAGE_ID = "page:page" as TLRecord["id"]
+const DOCUMENT_ID = "document:document" as TLRecord["id"]
+const POINTER_ID = "pointer:pointer" as TLRecord["id"]
 
 type TestFn = () => void | Promise<void>
 const tests: { name: string; fn: TestFn }[] = []
@@ -39,9 +44,10 @@ function test(name: string, fn: TestFn) {
 
 test("getDefaultStoreSnapshot returns populated snapshot", () => {
   const snapshot = getDefaultStoreSnapshot()
-  const records = snapshot.store as Record<string, TLRecord>
+  const records = snapshot.store
   const recordIds = Object.keys(records)
-  const recordTypes = Object.values(records).reduce<Record<string, number>>(
+  const recordValues = Object.values(records) as TLRecord[]
+  const recordTypes = recordValues.reduce<Record<string, number>>(
     (acc, record) => {
       acc[record.typeName] = (acc[record.typeName] ?? 0) + 1
       return acc
@@ -53,8 +59,9 @@ test("getDefaultStoreSnapshot returns populated snapshot", () => {
   assert(recordIds.includes("page:page"))
   assert(snapshot.schema?.schemaVersion)
   assert(snapshot.schema?.storeVersion)
-  const page = records["page:page"] as { name?: string }
-  assert(page?.name)
+  const page = records[PAGE_ID]
+  assert(page)
+  assert((page as { name?: string }).name)
   assertEqual(recordTypes.document ?? 0, 1)
   assertEqual(recordTypes.page ?? 0, 1)
 })
@@ -63,69 +70,73 @@ test("cloneSnapshot returns a deep clone", () => {
   const snapshot = getDefaultStoreSnapshot()
   const cloned = cloneSnapshot(snapshot)
 
-  const cloneRecords = cloned.store as Record<string, { name?: string }>
-  cloneRecords["page:page"].name = "Changed name"
+  const cloneRecords = cloned.store
+  const clonedPage = cloneRecords[PAGE_ID] as TLRecord & { name?: string }
+  clonedPage.name = "Changed name"
 
-  const originalRecords = snapshot.store as Record<string, { name?: string }>
-  assertNotEqual(originalRecords["page:page"].name, "Changed name")
+  const originalPage = snapshot.store[PAGE_ID] as TLRecord & { name?: string }
+  assertNotEqual(originalPage.name, "Changed name")
 })
 
 test("getDefaultStoreSnapshot returns a fresh clone each time", () => {
   const first = getDefaultStoreSnapshot()
-  const firstRecords = first.store as Record<string, { name?: string }>
-  const originalName = firstRecords["page:page"].name
-  firstRecords["page:page"].name = "Changed name"
+  const firstRecords = first.store
+  const firstPage = firstRecords[PAGE_ID] as TLRecord & { name?: string }
+  const originalName = firstPage.name
+  firstPage.name = "Changed name"
 
   const second = getDefaultStoreSnapshot()
-  const secondRecords = second.store as Record<string, { name?: string }>
+  const secondRecords = second.store
+  const secondPage = secondRecords[PAGE_ID] as TLRecord & { name?: string }
 
-  assertEqual(firstRecords["page:page"].name, "Changed name")
-  assertEqual(secondRecords["page:page"].name, originalName)
+  assertEqual(firstPage.name, "Changed name")
+  assertEqual(secondPage.name, originalName)
 })
 
 test("loadSnapshotIntoStore populates TL store records", () => {
-  const store = createTLStore({}) as TLStore
+  const store = createTLStore({})
   const before = store.getSnapshot()
 
   store.loadSnapshot(getDefaultStoreSnapshot())
 
   const after = store.getSnapshot()
-  const afterRecords = after.store as Record<string, TLRecord>
+  const afterRecords = after.store
 
   assertEqual(Object.keys(before.store).length, 0)
   assert(Object.keys(after.store).length > 0)
-  assert(afterRecords["document:document"])
-  assert(afterRecords["page:page"])
+  assert(afterRecords[DOCUMENT_ID])
+  assert(afterRecords[PAGE_ID])
 })
 
 test("applyTLStoreChangesToAutomerge updates snapshots", () => {
   const snapshot = getDefaultStoreSnapshot()
-  const records = snapshot.store as Record<string, TLRecord>
-  const originalDocument = records["document:document"]
-  const pointer = records["pointer:pointer"]
+  const records = snapshot.store
+  const originalDocument = records[DOCUMENT_ID]
+  const pointer = records[POINTER_ID]
 
   const updatedDocument = {
     ...originalDocument,
     name: "Updated document name",
   }
 
-  const changes = {
-    added: {} as Record<string, TLRecord>,
-    removed: pointer ? { [pointer.id]: pointer } : {},
-    updated: {
-      [originalDocument.id]: [
-        originalDocument,
-        updatedDocument,
-      ] as unknown as [TLRecord, TLRecord],
-    },
+  const added: Record<string, TLRecord> = {}
+  const removed: Record<string, TLRecord> = pointer ? { [pointer.id]: pointer } : {}
+  const updated: Record<string, [TLRecord, TLRecord]> = {
+    [originalDocument.id]: [originalDocument, updatedDocument],
   }
 
-  const doc = { store: JSON.parse(JSON.stringify(snapshot.store)) as Record<string, TLRecord> }
+  const changes: RecordsDiff<TLRecord> = {
+    added,
+    removed,
+    updated,
+  }
+
+  const doc = cloneSnapshot(snapshot)
 
   applyTLStoreChangesToAutomerge(doc, changes)
 
-  const mutatedRecords = doc.store as Record<string, { name?: string }>
-  assertEqual(mutatedRecords["document:document"].name, "Updated document name")
+  const mutatedDocument = doc.store[DOCUMENT_ID] as TLRecord & { name?: string }
+  assertEqual(mutatedDocument.name, "Updated document name")
   if (pointer) {
     assertEqual(doc.store[pointer.id], undefined)
   }
@@ -149,19 +160,17 @@ async function run() {
   }
 }
 
-const proc: any = (globalThis as any)?.process
-
 run()
   .then(() => {
     console.log("All tests passed")
-    if (proc?.exit) {
-      proc.exit(0)
-    }
   })
   .catch((error) => {
     console.error(error)
-    if (proc?.exit) {
-      proc.exit(1)
+    const maybeProcess = (globalThis as {
+      process?: { exit(code?: number): never }
+    }).process
+    if (maybeProcess?.exit) {
+      maybeProcess.exit(1)
     } else {
       throw error
     }

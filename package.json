@@ -9,7 +9,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-specifier-resolution=node --loader ./tests/ts-loader.mjs tests/storeSnapshot.test.ts"
+    "test": "tsc -p tsconfig.tests.json && node tests/dist/tests/storeSnapshot.test.js"
   },
   "peerDependencies": {
     "@automerge/automerge-repo": "^2.4.0",
@@ -21,12 +21,8 @@
     "@automerge/automerge-repo-react-hooks": "^2.4.0",
     "@types/node": "^20.11.17",
     "tldraw": "^4.1.1",
-    "@types/lodash": "^4.14.202",
     "@types/react": "^18.2.48",
     "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "lodash": "^4.17.21"
   },
   "files": [
     "dist/**"

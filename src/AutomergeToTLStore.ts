@@ -1,22 +1,16 @@
 import { TLRecord, RecordId, TLStore } from "tldraw"
 import type {
-  Patch as AutomergePatch,
+  Patch,
   Prop as AutomergeProp,
   InsertPatch,
   PutPatch,
   SpliceTextPatch,
 } from "@automerge/automerge"
 
-type LegacyUpdatePatch = {
-  action: "update"
-  path: AutomergeProp[]
-  value: unknown
-}
-
-type StorePatch = AutomergePatch | LegacyUpdatePatch
+type MutableContainer = Record<string, unknown>
 
 export function applyAutomergePatchesToTLStore(
-  patches: StorePatch[],
+  patches: Patch[],
   store: TLStore
 ) {
   const toRemove: TLRecord["id"][] = []
@@ -26,8 +20,11 @@ export function applyAutomergePatchesToTLStore(
     if (!isStorePatch(patch)) return
 
     const id = pathToId(patch.path)
-    const record =
-      updatedObjects[id] || JSON.parse(JSON.stringify(store.get(id) || {}))
+    let record = updatedObjects[id]
+    if (!record) {
+      const existing = store.get(id)
+      record = existing ? cloneRecord(existing) : ({} as TLRecord)
+    }
 
     switch (patch.action) {
       case "insert": {
@@ -47,11 +44,7 @@ export function applyAutomergePatchesToTLStore(
         break
       }
       default: {
-        if (isLegacyUpdatePatch(patch)) {
-          updatedObjects[id] = applyLegacyUpdateToObject(patch, record)
-        } else {
-          console.log("Unsupported patch:", patch)
-        }
+        throw new Error(`Unsupported Automerge patch action: ${patch.action}`)
       }
     }
   })
@@ -64,8 +57,8 @@ export function applyAutomergePatchesToTLStore(
   })
 }
 
-const isStorePatch = (patch: StorePatch): patch is StorePatch & { path: AutomergeProp[] } => {
-  return patch.path.length > 1 && patch.path[0] === "store"
+const isStorePatch = (patch: Patch): patch is Patch & { path: AutomergeProp[] } => {
+  return Array.isArray(patch.path) && patch.path.length > 1 && patch.path[0] === "store"
 }
 
 // path: ["store", "camera:page:page", "x"] => "camera:page:page"
@@ -77,68 +70,69 @@ const pathToId = (path: AutomergeProp[]): RecordId<any> => {
   return raw as RecordId<any>
 }
 
-const applyInsertToObject = (patch: InsertPatch, object: TLRecord): TLRecord => {
-  const { path, values } = patch
-  let current: any = object
-  const insertionPoint = Number(path[path.length - 1])
-  const listKey = path[path.length - 2]
-  const parts = path.slice(2, -2)
+const cloneRecord = (record: TLRecord): TLRecord =>
+  JSON.parse(JSON.stringify(record)) as TLRecord
 
-  for (const part of parts) {
-    if (current[part as any] === undefined) {
-      throw new Error("Unable to apply Automerge insert patch: missing path segment")
-    }
-    current = current[part as any]
+const toKey = (segment: AutomergeProp): string => {
+  if (typeof segment === "string" || typeof segment === "number") {
+    return String(segment)
+  }
+  throw new Error(`Invalid Automerge patch segment: ${String(segment)}`)
+}
+
+const ensureContainer = (value: unknown): MutableContainer => {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Unable to apply Automerge patch: missing path segment")
+  }
+  return value as MutableContainer
+}
+
+const getContainer = (record: TLRecord, parts: AutomergeProp[]): MutableContainer => {
+  if (parts.length === 0) {
+    return ensureContainer(record)
   }
 
-  const existing = Array.isArray(current[listKey as any])
-    ? current[listKey as any].slice()
-    : []
-  existing.splice(insertionPoint, 0, ...(values as any[]))
-  current[listKey as any] = existing
+  let current: unknown = record
+  for (const part of parts) {
+    const container = ensureContainer(current)
+    const key = toKey(part)
+    if (!(key in container)) {
+      throw new Error("Unable to apply Automerge patch: missing path segment")
+    }
+    current = container[key]
+  }
+
+  return ensureContainer(current)
+}
+
+const applyInsertToObject = (patch: InsertPatch, object: TLRecord): TLRecord => {
+  const { path, values } = patch
+  const insertionPointRaw = path[path.length - 1]
+  const insertionPoint = typeof insertionPointRaw === "number"
+    ? insertionPointRaw
+    : Number(insertionPointRaw)
+  if (!Number.isInteger(insertionPoint)) {
+    throw new Error("Unable to apply Automerge insert patch: invalid index")
+  }
+
+  const listKey = toKey(path[path.length - 2])
+  const container = getContainer(object, path.slice(2, -2))
+  const existing = container[listKey]
+  const nextValues = Array.isArray(existing) ? [...existing] : []
+  nextValues.splice(insertionPoint, 0, ...values)
+  container[listKey] = nextValues
   return object
 }
 
 const applyPutToObject = (patch: PutPatch, object: TLRecord): TLRecord => {
   const { path, value } = patch
-  let current: any = object
-  // special case
   if (path.length === 2) {
-    // this would be creating the object, but we have done
-    return object
+    return value as TLRecord
   }
 
-  const parts = path.slice(2, -2)
-  const property = path[path.length - 1]
-  const target = path[path.length - 2]
-
-  if (path.length === 3) {
-    return { ...object, [property as any]: value }
-  }
-
-  // default case
-  for (const part of parts) {
-    current = current[part as any]
-  }
-  current[target as any] = { ...current[target as any], [property as any]: value }
-  return object
-}
-
-const applyLegacyUpdateToObject = (
-  patch: LegacyUpdatePatch,
-  object: TLRecord
-): TLRecord => {
-  const { path, value } = patch
-  let current: any = object
-  const parts = path.slice(2, -1)
-  const pathEnd = path[path.length - 1]
-  for (const part of parts) {
-    if (current[part as any] === undefined) {
-      throw new Error("Unable to apply Automerge update patch: missing path segment")
-    }
-    current = current[part as any]
-  }
-  current[pathEnd as any] = value
+  const propertyKey = toKey(path[path.length - 1])
+  const container = getContainer(object, path.slice(2, -1))
+  container[propertyKey] = value
   return object
 }
 
@@ -147,23 +141,15 @@ const applySpliceToObject = (
   object: TLRecord
 ): TLRecord => {
   const { path, value } = patch
-  let current: any = object
-  const insertionPoint = Number(path[path.length - 1])
-  const pathEnd = path[path.length - 2]
-  const parts = path.slice(2, -2)
-  for (const part of parts) {
-    if (current[part as any] === undefined) {
-      throw new Error("Unable to apply Automerge splice patch: missing path segment")
-    }
-    current = current[part as any]
-  }
+  const insertionPointRaw = path[path.length - 1]
+  const insertionPoint = typeof insertionPointRaw === "number"
+    ? insertionPointRaw
+    : Number(insertionPointRaw)
   if (insertionPoint !== 0) {
     throw new Error("Splices are not supported yet")
   }
-  current[pathEnd as any] = value
+  const propertyKey = toKey(path[path.length - 2])
+  const container = getContainer(object, path.slice(2, -2))
+  container[propertyKey] = value
   return object
-}
-
-function isLegacyUpdatePatch(patch: StorePatch): patch is LegacyUpdatePatch {
-  return patch.action === "update"
 }

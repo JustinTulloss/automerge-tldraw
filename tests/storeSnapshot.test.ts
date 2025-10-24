@@ -1,8 +1,8 @@
-import { createTLStore, getSnapshot, loadSnapshot } from "tldraw"
+import { createTLStore, loadSnapshot } from "tldraw"
 import type { RecordsDiff, TLRecord, TLStoreSnapshot } from "tldraw"
 
-import { getDefaultStoreSnapshot } from "../src/default_store"
-import { applyTLStoreChangesToAutomerge } from "../src/TLStoreToAutomerge"
+import { getDefaultStoreSnapshot } from "../src/default_store.js"
+import { applyTLStoreChangesToAutomerge } from "../src/TLStoreToAutomerge.js"
 
 const cloneSnapshot = (snapshot: TLStoreSnapshot): TLStoreSnapshot =>
   typeof structuredClone === "function"
@@ -58,7 +58,12 @@ test("getDefaultStoreSnapshot returns populated snapshot", () => {
   assert(recordIds.includes("document:document"))
   assert(recordIds.includes("page:page"))
   assert(snapshot.schema?.schemaVersion)
-  assert(snapshot.schema?.storeVersion)
+  if (snapshot.schema?.schemaVersion === 1) {
+    assert("storeVersion" in snapshot.schema)
+  } else {
+    const sequences = (snapshot.schema as { sequences?: Record<string, number> }).sequences
+    assert(sequences && Object.keys(sequences).length > 0)
+  }
   const page = records[PAGE_ID]
   assert(page)
   assert((page as { name?: string }).name)
@@ -95,11 +100,11 @@ test("getDefaultStoreSnapshot returns a fresh clone each time", () => {
 
 test("loadSnapshotIntoStore populates TL store records", () => {
   const store = createTLStore({})
-  const before = getSnapshot(store)
+  const before = store.getStoreSnapshot()
 
   loadSnapshot(store, getDefaultStoreSnapshot())
 
-  const after = getSnapshot(store)
+  const after = store.getStoreSnapshot()
   const afterRecords = after.store
 
   assertEqual(Object.keys(before.store).length, 0)
@@ -163,6 +168,12 @@ async function run() {
 run()
   .then(() => {
     console.log("All tests passed")
+    const maybeProcess = (globalThis as {
+      process?: { exit(code?: number): never }
+    }).process
+    if (maybeProcess?.exit) {
+      maybeProcess.exit(0)
+    }
   })
   .catch((error) => {
     console.error(error)

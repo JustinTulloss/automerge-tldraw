@@ -16,7 +16,6 @@ import type {
   TLStore,
   TLStoreSnapshot,
   TLStoreWithStatus,
-  InstancePresenceRecord,
 } from "tldraw"
 import { useEffect, useState } from "react"
 import { DocHandle, DocHandleChangePayload } from "@automerge/automerge-repo"
@@ -32,6 +31,10 @@ const cloneSnapshot = (snapshot: TLStoreSnapshot): TLStoreSnapshot =>
   typeof structuredClone === "function"
     ? structuredClone(snapshot)
     : JSON.parse(JSON.stringify(snapshot))
+
+type InstancePresenceRecord = ReturnType<
+  typeof InstancePresenceRecordType.create
+>
 
 type StoreHistoryEntry = Parameters<TLStore["listen"]>[0] extends (
   entry: infer Entry

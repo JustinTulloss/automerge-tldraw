@@ -5,8 +5,10 @@
     "declaration": false,
     "emitDeclarationOnly": false,
     "noEmit": false,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext"
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
   },
-  "include": ["tests/**/*.ts"]
+  "include": [
+    "tests/**/*.ts"
+  ]
 }

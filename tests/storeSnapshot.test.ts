@@ -3,11 +3,7 @@ import type { RecordsDiff, TLRecord, TLStoreSnapshot } from "tldraw"
 
 import { getDefaultStoreSnapshot } from "../src/default_store.js"
 import { applyTLStoreChangesToAutomerge } from "../src/TLStoreToAutomerge.js"
-
-const cloneSnapshot = (snapshot: TLStoreSnapshot): TLStoreSnapshot =>
-  typeof structuredClone === "function"
-    ? structuredClone(snapshot)
-    : JSON.parse(JSON.stringify(snapshot))
+import { cloneSnapshot } from "../src/utils.js"
 
 const PAGE_ID = "page:page" as TLRecord["id"]
 const DOCUMENT_ID = "document:document" as TLRecord["id"]

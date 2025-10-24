@@ -1,6 +1,6 @@
 {
   "name": "automerge-tldraw",
-  "version": "0.2.0",
+  "version": "1.0.0-alpha",
   "description": "a react hook for binding a tldraw editor instance to a dedicated automerge document",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,7 +10,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc",
-    "test": "tsc -p tsconfig.tests.json && node --experimental-default-type=module tests/dist/tests/storeSnapshot.test.js"
+    "test": "tsc -p tsconfig.tests.json && node tests/dist/tests/storeSnapshot.test.js"
   },
   "peerDependencies": {
     "@automerge/automerge-repo": "^2.4.0",

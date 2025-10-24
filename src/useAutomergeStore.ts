@@ -26,13 +26,8 @@ import {
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js"
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js"
+import { cloneSnapshot } from "./utils.js"
 
-
-const jsonClone = (s: TLStoreSnapshot) =>  JSON.parse(JSON.stringify(s))
-const cloneSnapshot: (snapshot: TLStoreSnapshot) => TLStoreSnapshot = 
-  typeof structuredClone === "function" ?
-  structuredClone<TLStoreSnapshot> :
-  jsonClone;
 
 type InstancePresenceRecord = ReturnType<
   typeof InstancePresenceRecordType.create
@@ -48,11 +43,6 @@ type PresenceMetadata = {
   userId: string
   name?: string
   color?: string
-}
-
-const ensureStoreIsUsableIfAvailable = (store: TLStore): void => {
-  const maybeEnsure = (store as TLStore & { ensureStoreIsUsable?: () => void }).ensureStoreIsUsable
-  maybeEnsure?.call(store)
 }
 
 const isTLRecord = (value: unknown): value is TLRecord => {
@@ -75,7 +65,6 @@ export function useAutomergeStore({
     const store = createTLStore({
       shapeUtils: [...defaultShapeUtils, ...shapeUtils],
     })
-    ensureStoreIsUsableIfAvailable(store)
     return store
   })
 
@@ -125,7 +114,7 @@ export function useAutomergeStore({
     /* Defer rendering until the document is ready */
     // TODO: need to think through the various status possibilities here and how they map
     handle.whenReady().then(() => {
-      const doc = handle.docSync()
+      const doc = handle.doc()
       if (!doc) throw new Error("Document not found")
       if (!doc.store) throw new Error("Document store not initialized")
 

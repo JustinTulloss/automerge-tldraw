@@ -27,10 +27,12 @@ import {
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js"
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js"
 
-const cloneSnapshot = (snapshot: TLStoreSnapshot): TLStoreSnapshot =>
-  typeof structuredClone === "function"
-    ? structuredClone(snapshot)
-    : JSON.parse(JSON.stringify(snapshot))
+
+const jsonClone = (s: TLStoreSnapshot) =>  JSON.parse(JSON.stringify(s))
+const cloneSnapshot: (snapshot: TLStoreSnapshot) => TLStoreSnapshot = 
+  typeof structuredClone === "function" ?
+  structuredClone<TLStoreSnapshot> :
+  jsonClone;
 
 type InstancePresenceRecord = ReturnType<
   typeof InstancePresenceRecordType.create

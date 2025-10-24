@@ -10,7 +10,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc",
-    "test": "tsc -p tsconfig.tests.json && node tests/dist/tests/storeSnapshot.test.js"
+    "test": "vitest run"
   },
   "peerDependencies": {
     "@automerge/automerge-repo": "^2.4.0",
@@ -22,8 +22,11 @@
     "@automerge/automerge-repo-react-hooks": "^2.4.0",
     "@types/node": "^20.11.17",
     "@types/react": "^18.2.48",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "tldraw": "^4.1.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0"
   },
   "files": [
     "dist/**"

@@ -2,3 +2,4 @@ node_modules
 dist
 tests/dist
 .vscode
+automerge-tldraw-*.tgz

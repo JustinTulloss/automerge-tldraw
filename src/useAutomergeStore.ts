@@ -8,6 +8,7 @@ import {
   InstancePresenceRecordType,
   computed,
   react,
+  loadSnapshot,
 } from "tldraw"
 import type {
   TLAnyShapeUtilConstructor,
@@ -15,6 +16,7 @@ import type {
   TLStore,
   TLStoreSnapshot,
   TLStoreWithStatus,
+  InstancePresenceRecord,
 } from "tldraw"
 import { useEffect, useState } from "react"
 import { DocHandle, DocHandleChangePayload } from "@automerge/automerge-repo"
@@ -125,7 +127,7 @@ export function useAutomergeStore({
       const snapshot = cloneSnapshot(doc)
 
       store.mergeRemoteChanges(() => {
-        store.loadSnapshot(snapshot)
+        loadSnapshot(store, snapshot)
       })
 
       setStoreWithStatus({
@@ -174,18 +176,22 @@ export function useAutomergePresence({
     
     const remotePresence = Object.values(peerStates).filter(isTLRecord)
     const toPut: TLRecord[] = remotePresence.filter(
-      (record) => Object.keys(record).length !== 0
+      (record: TLRecord) => Object.keys(record).length !== 0
     )
 
     // put / remove the records in the store
     const existingPresence = innerStore
       .query.records("instance_presence")
       .get()
-      .slice()
+      .slice() as InstancePresenceRecord[]
     const toRemove = existingPresence
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((record) => record.id)
-      .filter((id) => !toPut.some((record) => record.id === id))
+      .sort((a: InstancePresenceRecord, b: InstancePresenceRecord) =>
+        a.id.localeCompare(b.id)
+      )
+      .map((record: InstancePresenceRecord) => record.id)
+      .filter((id: InstancePresenceRecord["id"]) =>
+        !toPut.some((record: TLRecord) => record.id === id)
+      )
 
     if (toRemove.length) innerStore.remove(toRemove)
     if (toPut.length) innerStore.put(toPut)

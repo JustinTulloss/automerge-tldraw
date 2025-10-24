@@ -1,4 +1,4 @@
-import { createTLStore } from "tldraw"
+import { createTLStore, getSnapshot, loadSnapshot } from "tldraw"
 import type { RecordsDiff, TLRecord, TLStoreSnapshot } from "tldraw"
 
 import { getDefaultStoreSnapshot } from "../src/default_store"
@@ -95,11 +95,11 @@ test("getDefaultStoreSnapshot returns a fresh clone each time", () => {
 
 test("loadSnapshotIntoStore populates TL store records", () => {
   const store = createTLStore({})
-  const before = store.getSnapshot()
+  const before = getSnapshot(store)
 
-  store.loadSnapshot(getDefaultStoreSnapshot())
+  loadSnapshot(store, getDefaultStoreSnapshot())
 
-  const after = store.getSnapshot()
+  const after = getSnapshot(store)
   const afterRecords = after.store
 
   assertEqual(Object.keys(before.store).length, 0)

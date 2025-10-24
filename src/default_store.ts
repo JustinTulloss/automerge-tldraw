@@ -1,4 +1,4 @@
-import { TLStoreSnapshot, TLStore, createTLStore } from "tldraw"
+import { TLStoreSnapshot, TLStore, createTLStore, getSnapshot } from "tldraw"
 
 let cachedDefaultSnapshot: TLStoreSnapshot | null = null
 
@@ -16,7 +16,7 @@ export function getDefaultStoreSnapshot(): TLStoreSnapshot {
   if (!cachedDefaultSnapshot) {
     const store = createTLStore({})
     ensureStoreIsUsableIfAvailable(store)
-    const snapshot = store.getSnapshot()
+    const snapshot = getSnapshot(store)
     cachedDefaultSnapshot = cloneSnapshot(snapshot)
   }
 

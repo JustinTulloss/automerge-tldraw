@@ -19,10 +19,7 @@ import type {
 } from "tldraw"
 import { useEffect, useState } from "react"
 import { DocHandle, DocHandleChangePayload } from "@automerge/automerge-repo"
-import {
-  useLocalAwareness,
-  useRemoteAwareness,
-} from "@automerge/automerge-repo-react-hooks"
+import { useLocalAwareness, useRemoteAwareness } from "@automerge/react"
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js"
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js"

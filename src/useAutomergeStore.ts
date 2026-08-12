@@ -1,10 +1,6 @@
 import {
-  TLAnyShapeUtilConstructor,
-  TLRecord,
-  TLStoreWithStatus,
   createTLStore,
   defaultShapeUtils,
-  HistoryEntry,
   getUserPreferences,
   setUserPreferences,
   defaultUserPreferences,
@@ -12,25 +8,54 @@ import {
   InstancePresenceRecordType,
   computed,
   react,
+  loadSnapshot,
+} from "tldraw"
+import type {
+  TLAnyShapeUtilConstructor,
+  TLRecord,
+  TLStore,
   TLStoreSnapshot,
-  sortById,
-} from "@tldraw/tldraw"
+  TLStoreWithStatus,
+} from "tldraw"
 import { useEffect, useState } from "react"
 import { DocHandle, DocHandleChangePayload } from "@automerge/automerge-repo"
-import {
-  useLocalAwareness,
-  useRemoteAwareness,
-} from "@automerge/automerge-repo-react-hooks"
+import { useLocalAwareness, useRemoteAwareness } from "@automerge/react"
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js"
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js"
+import { cloneSnapshot } from "./utils.js"
+
+
+type InstancePresenceRecord = ReturnType<
+  typeof InstancePresenceRecordType.create
+>
+
+type StoreHistoryEntry = Parameters<TLStore["listen"]>[0] extends (
+  entry: infer Entry
+) => void
+  ? Entry
+  : never
+
+type PresenceMetadata = {
+  userId: string
+  name?: string
+  color?: string
+}
+
+const isTLRecord = (value: unknown): value is TLRecord => {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    "typeName" in value
+  )
+}
 
 export function useAutomergeStore({
   handle,
   shapeUtils = [],
 }: {
   handle: DocHandle<TLStoreSnapshot>
-  userId: string
   shapeUtils?: TLAnyShapeUtilConstructor[]
 }): TLStoreWithStatus {
   const [store] = useState(() => {
@@ -53,14 +78,15 @@ export function useAutomergeStore({
     let preventPatchApplications = false
 
     /* TLDraw to Automerge */
-    function syncStoreChangesToAutomergeDoc({
-      changes,
-    }: HistoryEntry<TLRecord>) {
+    function syncStoreChangesToAutomergeDoc({ changes }: StoreHistoryEntry) {
       preventPatchApplications = true
-      handle.change((doc) => {
-        applyTLStoreChangesToAutomerge(doc, changes)
-      })
-      preventPatchApplications = false
+      try {
+        handle.change((doc: TLStoreSnapshot) => {
+          applyTLStoreChangesToAutomerge(doc, changes)
+        })
+      } finally {
+        preventPatchApplications = false
+      }
     }
 
     unsubs.push(
@@ -73,7 +99,7 @@ export function useAutomergeStore({
     /* Automerge to TLDraw */
     const syncAutomergeDocChangesToStore = ({
       patches,
-    }: DocHandleChangePayload<any>) => {
+    }: DocHandleChangePayload<TLStoreSnapshot>) => {
       if (preventPatchApplications) return
 
       applyAutomergePatchesToTLStore(patches, store)
@@ -85,15 +111,14 @@ export function useAutomergeStore({
     /* Defer rendering until the document is ready */
     // TODO: need to think through the various status possibilities here and how they map
     handle.whenReady().then(() => {
-      const doc = handle.docSync()
+      const doc = handle.doc()
       if (!doc) throw new Error("Document not found")
       if (!doc.store) throw new Error("Document store not initialized")
 
+      const snapshot = cloneSnapshot(doc)
+
       store.mergeRemoteChanges(() => {
-        store.loadSnapshot({
-          store: JSON.parse(JSON.stringify(doc.store)),
-          schema: doc.schema,
-        })
+        loadSnapshot(store, snapshot)
       })
 
       setStoreWithStatus({
@@ -112,9 +137,15 @@ export function useAutomergeStore({
   return storeWithStatus
 }
 
-export function useAutomergePresence({ handle, store, userMetadata }: 
-  { handle: DocHandle<TLStoreSnapshot>, store: TLStoreWithStatus, userMetadata: any }) {
-
+export function useAutomergePresence({
+  handle,
+  store,
+  userMetadata,
+}: {
+  handle: DocHandle<TLStoreSnapshot>
+  store: TLStoreWithStatus
+  userMetadata: PresenceMetadata
+}): void {
   const innerStore = store?.store
 
   const { userId, name, color } = userMetadata
@@ -123,7 +154,7 @@ export function useAutomergePresence({ handle, store, userMetadata }:
     handle,
     userId,
     initialState: {},
-  })
+  }) as [unknown, (state: unknown) => void]
 
   const [peerStates] = useRemoteAwareness({
     handle,
@@ -134,21 +165,31 @@ export function useAutomergePresence({ handle, store, userMetadata }:
   useEffect(() => {
     if (!innerStore) return 
     
-    const toPut: TLRecord[] = 
-      Object.values(peerStates)
-      .filter((record) => record && Object.keys(record).length !== 0)
+    const remotePresence = Object.values(peerStates).filter(isTLRecord)
+    const toPut: TLRecord[] = remotePresence.filter(
+      (record: TLRecord) => Object.keys(record).length !== 0
+    )
 
     // put / remove the records in the store
-    const toRemove = innerStore.query.records('instance_presence').get().sort(sortById)
-      .map((record) => record.id)
-      .filter((id) => !toPut.find((record) => record.id === id))
+    const existingPresence = innerStore
+      .query.records("instance_presence")
+      .get()
+      .slice() as InstancePresenceRecord[]
+    const toRemove = existingPresence
+      .sort((a: InstancePresenceRecord, b: InstancePresenceRecord) =>
+        a.id.localeCompare(b.id)
+      )
+      .map((record: InstancePresenceRecord) => record.id)
+      .filter((id: InstancePresenceRecord["id"]) =>
+        !toPut.some((record: TLRecord) => record.id === id)
+      )
 
     if (toRemove.length) innerStore.remove(toRemove)
     if (toPut.length) innerStore.put(toPut)
   }, [innerStore, peerStates])
 
   useEffect(() => {
-    if (!innerStore) return 
+    if (!innerStore) return
     /* ----------- Presence stuff ----------- */
     setUserPreferences({ id: userId, color, name })
 

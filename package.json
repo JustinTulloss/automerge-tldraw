@@ -1,30 +1,33 @@
 {
   "name": "automerge-tldraw",
-  "version": "0.2.0",
+  "version": "1.0.0-alpha.3",
   "description": "a react hook for binding a tldraw editor instance to a dedicated automerge document",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "repository": "https://github.com/pvh/automerge-tldraw",
   "author": "Peter van Hardenberg (pvh@pvh.ca)",
   "license": "MIT",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "peerDependencies": {
-    "@automerge/automerge-repo": "^1.1.0",
-    "@automerge/automerge-repo-react-hooks": "^1.1.0",
-    "@tldraw/tldraw": "2.0.0-beta.2"
+    "@automerge/automerge-repo": "^2.4.0 || ^2.6.0-alpha.3",
+    "@automerge/react": "^2.4.0 || ^2.6.0-alpha.3",
+    "tldraw": "^4.1.1"
   },
   "devDependencies": {
-    "@automerge/automerge-repo": "^1.1.0",
-    "@automerge/automerge-repo-react-hooks": "^1.1.0",
-    "@tldraw/tldraw": "2.0.0-beta.2",
-    "@types/lodash": "^4.14.202",
+    "@automerge/automerge-repo": "2.6.0-alpha.3",
+    "@automerge/react": "2.6.0-alpha.3",
+    "@types/node": "^20.11.17",
     "@types/react": "^18.2.48",
-    "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "lodash": "^4.17.21"
+    "prosemirror-model": "^1.25.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tldraw": "^4.1.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0"
   },
   "files": [
     "dist/**"

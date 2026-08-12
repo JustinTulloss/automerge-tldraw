@@ -1,69 +1,53 @@
-import { RecordsDiff, TLRecord } from "@tldraw/tldraw"
-import _ from "lodash"
+import { RecordsDiff, TLRecord, TLStoreSnapshot } from "tldraw"
 
-export function applyTLStoreChangesToAutomerge(
-  doc: any,
-  changes: RecordsDiff<TLRecord>
-) {
-  Object.values(changes.added).forEach((record) => {
-    doc.store[record.id] = record
-  })
+/**
+ * `props.richText` is ProseMirror's `toJSON()`, whose node `attrs` have a null
+ * prototype. Automerge only hydrates `Object.prototype`-rooted objects and
+ * throws `RangeError: invalid value` otherwise, discarding the whole enclosing
+ * `change()`. Since each update rewrites the entire record, one unrepresentable
+ * `richText` stops a shape persisting anything at all — x/y included.
+ *
+ * `undefined` is rejected for the same reason, so it's dropped here too.
+ */
+function toAutomergeValue<T>(value: T): T {
+  if (value === null || typeof value !== "object") {
+    return value
+  }
 
-  Object.values(changes.updated).forEach(([_, record]) => {
-    deepCompareAndUpdate(doc.store[record.id], record)
-  })
+  if (Array.isArray(value)) {
+    return value.map(toAutomergeValue) as T
+  }
 
-  Object.values(changes.removed).forEach((record) => {
-    delete doc.store[record.id]
-  })
+  const source = value as Record<string, unknown>
+  const plain: Record<string, unknown> = {}
+
+  for (const key of Object.keys(source)) {
+    const entry = source[key]
+    if (entry === undefined) continue
+    plain[key] = toAutomergeValue(entry)
+  }
+
+  return plain as T
 }
 
-function deepCompareAndUpdate(objectA: any, objectB: any) {
-  // eslint-disable-line
-  if (_.isArray(objectB)) {
-    if (!_.isArray(objectA)) {
-      // if objectA is not an array, replace it with objectB
-      objectA = objectB.slice()
-    } else {
-      // compare and update array elements
-      for (let i = 0; i < objectB.length; i++) {
-        if (i >= objectA.length) {
-          objectA.push(objectB[i])
-        } else {
-          if (_.isObject(objectB[i]) || _.isArray(objectB[i])) {
-            // if element is an object or array, recursively compare and update
-            deepCompareAndUpdate(objectA[i], objectB[i])
-          } else if (objectA[i] !== objectB[i]) {
-            // update the element
-            objectA[i] = objectB[i]
-          }
-        }
-      }
-      // remove extra elements
-      if (objectA.length > objectB.length) {
-        objectA.splice(objectB.length)
-      }
-    }
-  } else if (_.isObject(objectB)) {
-    _.forIn(objectB, (value: any, key: any) => {
-      if (objectA[key] === undefined) {
-        // if key is not in objectA, add it
-        objectA[key] = value
-      } else {
-        if (_.isObject(value) || _.isArray(value)) {
-          // if value is an object or array, recursively compare and update
-          deepCompareAndUpdate(objectA[key], value)
-        } else if (objectA[key] !== value) {
-          // update the value
-          objectA[key] = value
-        }
-      }
-    })
-    _.forIn(objectA, (_: any, key: string) => {
-      if ((objectB as any)[key] === undefined) {
-        // if key is not in objectB, remove it
-        delete objectA[key]
-      }
-    })
+export function applyTLStoreChangesToAutomerge(
+  doc: TLStoreSnapshot,
+  changes: RecordsDiff<TLRecord>
+): void {
+  const store = doc.store
+
+  for (const record of Object.values(changes.added) as TLRecord[]) {
+    store[record.id] = toAutomergeValue(record)
+  }
+
+  for (const [, record] of Object.values(changes.updated) as Array<[
+    TLRecord,
+    TLRecord,
+  ]>) {
+    store[record.id] = toAutomergeValue(record)
+  }
+
+  for (const record of Object.values(changes.removed) as TLRecord[]) {
+    delete store[record.id]
   }
 }

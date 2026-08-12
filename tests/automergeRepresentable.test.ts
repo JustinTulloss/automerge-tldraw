@@ -157,4 +157,44 @@ describe("Automerge representability", () => {
     expect(shape).toBeDefined()
     expect(JSON.stringify(shape.props.richText)).toContain("HELLO")
   })
+
+  // The diffs above are hand-built. This one comes off a real store through
+  // the same listener `useAutomergeStore` installs, so the wiring is covered
+  // end to end and consumers don't have to test it themselves.
+  it("survives a real store listener, label and position both", () => {
+    const doc = automergeDoc()
+    const store = createTLStore({ shapeUtils: defaultShapeUtils })
+    loadSnapshot(store, cloneSnapshot(doc.read()))
+
+    const unlisten = store.listen(({ changes }) => doc.apply(changes), {
+      source: "user",
+      scope: "document",
+    })
+
+    store.put([textShape({ type: "doc", content: [{ type: "paragraph" }] })])
+    store.update(SHAPE_ID, (shape) => ({
+      ...shape,
+      x: 437,
+      y: 161,
+      props: {
+        ...(shape as unknown as { props: Record<string, unknown> }).props,
+        richText: richTextFromProseMirror(`12'-6"`),
+      },
+    }))
+
+    unlisten()
+
+    const reopened = createTLStore({ shapeUtils: defaultShapeUtils })
+    loadSnapshot(reopened, cloneSnapshot(doc.read()))
+
+    const shape = reopened.get(SHAPE_ID) as TLRecord & {
+      x: number
+      y: number
+      props: { richText: unknown }
+    }
+    expect(shape).toBeDefined()
+    expect(shape.x).toBe(437)
+    expect(shape.y).toBe(161)
+    expect(JSON.stringify(shape.props.richText)).toContain("12'-6")
+  })
 })

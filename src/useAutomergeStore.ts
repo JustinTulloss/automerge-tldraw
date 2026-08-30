@@ -15,6 +15,7 @@ import {
 } from "tldraw"
 import type {
   TLAnyBindingUtilConstructor,
+  TLAssetStore,
   TLAnyShapeUtilConstructor,
   TLRecord,
   TLStore,
@@ -63,15 +64,19 @@ export function useAutomergeStore({
   handle,
   shapeUtils = [],
   bindingUtils = [],
+  assets,
 }: {
   handle: DocHandle<TLStoreSnapshot>
   shapeUtils?: TLAnyShapeUtilConstructor[]
   bindingUtils?: TLAnyBindingUtilConstructor[]
+  /** Asset storage; without one, tldraw inlines uploads as base64 data URLs. */
+  assets?: TLAssetStore
 }): TLStoreWithStatus {
   const [store] = useState(() => {
     const store = createTLStore({
       shapeUtils: [...defaultShapeUtils, ...shapeUtils],
       bindingUtils: [...defaultBindingUtils, ...bindingUtils],
+      assets,
     })
     return store
   })

@@ -1,29 +1,37 @@
 import {
   createTLStore,
   defaultShapeUtils,
+  defaultBindingUtils,
   getUserPreferences,
   setUserPreferences,
   defaultUserPreferences,
   createPresenceStateDerivation,
   InstancePresenceRecordType,
+  UserRecordType,
+  createUserId,
   computed,
   react,
   loadSnapshot,
 } from "tldraw"
 import type {
+  TLAnyBindingUtilConstructor,
   TLAnyShapeUtilConstructor,
   TLRecord,
   TLStore,
   TLStoreSnapshot,
   TLStoreWithStatus,
+  TLUser,
 } from "tldraw"
 import { useEffect, useState } from "react"
 import { DocHandle, DocHandleChangePayload } from "@automerge/automerge-repo"
 import { useLocalAwareness, useRemoteAwareness } from "@automerge/react"
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js"
-import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js"
-import { cloneSnapshot } from "./utils.js"
+import {
+  applyTLStoreChangesToAutomerge,
+  writeSnapshotToAutomerge,
+} from "./TLStoreToAutomerge.js"
+import { canonicalJson, cloneSnapshot } from "./utils.js"
 
 
 type InstancePresenceRecord = ReturnType<
@@ -54,13 +62,16 @@ const isTLRecord = (value: unknown): value is TLRecord => {
 export function useAutomergeStore({
   handle,
   shapeUtils = [],
+  bindingUtils = [],
 }: {
   handle: DocHandle<TLStoreSnapshot>
   shapeUtils?: TLAnyShapeUtilConstructor[]
+  bindingUtils?: TLAnyBindingUtilConstructor[]
 }): TLStoreWithStatus {
   const [store] = useState(() => {
     const store = createTLStore({
       shapeUtils: [...defaultShapeUtils, ...shapeUtils],
+      bindingUtils: [...defaultBindingUtils, ...bindingUtils],
     })
     return store
   })
@@ -121,6 +132,21 @@ export function useAutomergeStore({
         loadSnapshot(store, snapshot)
       })
 
+      // loadSnapshot ran tldraw's schema migrations in memory. If the doc's
+      // serialized schema is behind, persist the migrated snapshot so the
+      // incremental patch paths exchange current-schema records from now on.
+      const migrated = store.getStoreSnapshot()
+      if (canonicalJson(doc.schema) !== canonicalJson(migrated.schema)) {
+        preventPatchApplications = true
+        try {
+          handle.change((d: TLStoreSnapshot) => {
+            writeSnapshotToAutomerge(d, migrated)
+          })
+        } finally {
+          preventPatchApplications = false
+        }
+      }
+
       setStoreWithStatus({
         store,
         status: "synced-remote",
@@ -163,8 +189,8 @@ export function useAutomergePresence({
 
   /* ----------- Presence stuff ----------- */
   useEffect(() => {
-    if (!innerStore) return 
-    
+    if (!innerStore) return
+
     const remotePresence = Object.values(peerStates).filter(isTLRecord)
     const toPut: TLRecord[] = remotePresence.filter(
       (record: TLRecord) => Object.keys(record).length !== 0
@@ -193,24 +219,20 @@ export function useAutomergePresence({
     /* ----------- Presence stuff ----------- */
     setUserPreferences({ id: userId, color, name })
 
-    const userPreferences = computed<{
-      id: string
-      color: string
-      name: string
-    }>("userPreferences", () => {
-      const user = getUserPreferences()
-      return {
-        id: user.id,
-        color: user.color ?? defaultUserPreferences.color,
-        name: user.name ?? defaultUserPreferences.name,
-      }
+    // tldraw 5.x presence takes a Signal<TLUser | null> (a full user record
+    // with a branded TLUserId) instead of a bare preferences object.
+    const user = computed<TLUser | null>("userPreferences", () => {
+      const prefs = getUserPreferences()
+      return UserRecordType.create({
+        id: createUserId(prefs.id),
+        name: prefs.name ?? defaultUserPreferences.name,
+        color: prefs.color ?? defaultUserPreferences.color,
+      })
     })
 
-    const presenceId = InstancePresenceRecordType.createId(userId)
-    const presenceDerivation = createPresenceStateDerivation(
-      userPreferences,
-      presenceId
-    )(innerStore)
+    const presenceDerivation = createPresenceStateDerivation(user, {
+      instanceId: InstancePresenceRecordType.createId(userId),
+    })(innerStore)
 
     return react("when presence changes", () => {
       const presence = presenceDerivation.get()
@@ -218,7 +240,7 @@ export function useAutomergePresence({
         updateLocalState(presence)
       })
     })
-  }, [innerStore, userId, updateLocalState])
+  }, [innerStore, userId, name, color, updateLocalState])
   /* ----------- End presence stuff ----------- */
 
 }

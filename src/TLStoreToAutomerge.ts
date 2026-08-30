@@ -30,6 +30,24 @@ function toAutomergeValue<T>(value: T): T {
   return plain as T
 }
 
+/**
+ * Replace the doc's records and schema with a (migrated) snapshot. Used once
+ * per schema upgrade, so the doc catches up to the running tldraw version and
+ * incremental patches exchange current-schema records.
+ */
+export function writeSnapshotToAutomerge(
+  doc: TLStoreSnapshot,
+  snapshot: TLStoreSnapshot
+): void {
+  for (const id of Object.keys(doc.store)) {
+    if (!(id in snapshot.store)) delete doc.store[id as TLRecord["id"]]
+  }
+  for (const record of Object.values(snapshot.store) as TLRecord[]) {
+    doc.store[record.id] = toAutomergeValue(record)
+  }
+  doc.schema = toAutomergeValue(snapshot.schema)
+}
+
 export function applyTLStoreChangesToAutomerge(
   doc: TLStoreSnapshot,
   changes: RecordsDiff<TLRecord>

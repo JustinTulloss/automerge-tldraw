@@ -121,15 +121,20 @@ export function useAutomergeStore({
       applyAutomergePatchesToTLStore(patches, store)
     }
 
-    handle.on("change", syncAutomergeDocChangesToStore)
-    unsubs.push(() => handle.off("change", syncAutomergeDocChangesToStore))
-
     /* Defer rendering until the document is ready */
     // TODO: need to think through the various status possibilities here and how they map
     handle.whenReady().then(() => {
       const doc = handle.doc()
       if (!doc) throw new Error("Document not found")
       if (!doc.store) throw new Error("Document store not initialized")
+
+      // Subscribe only now: initial-sync change events would otherwise put
+      // raw (possibly schema-behind) doc records into the store before
+      // loadSnapshot has run tldraw's migrations over the full document.
+      // Subscribing and snapshotting happen in the same synchronous block,
+      // so no change can slip between them.
+      handle.on("change", syncAutomergeDocChangesToStore)
+      unsubs.push(() => handle.off("change", syncAutomergeDocChangesToStore))
 
       const snapshot = cloneSnapshot(doc)
 
